@@ -4,6 +4,7 @@ const Dealer = require("../config/dealer.config"); // Assuming you have a Dealer
 const PDFDocument = require("pdfkit-table");
 const fs = require("fs");
 const path = require("path");
+const { clockState, incrementClock } = require("../config/serverOperations.config");
 require('pdfkit-table');
 
 const genReports = async (req, res) => {
@@ -93,64 +94,68 @@ const displaySales = async (req, res) => {
 };
 
 const makeSale = async (req, res) => {
-    const { username } = req.params;
-    const { name, color, model, quantity, sellPrice } = req.body;
+  const { username } = req.params;
+  const { name, color, model, quantity, sellPrice } = req.body;
 
-    // Validate incoming data
-    if (!username || !name || !color || !model || !quantity || !sellPrice) {
-        return res.status(400).send("All fields are required.");
+  // Validate incoming data
+  if (!username || !name || !color || !model || !quantity || !sellPrice) {
+    return res.status(400).send("All fields are required.");
+  }
+  if (quantity <= 0 || sellPrice <= 0) {
+    return res.status(400).send("Quantity and selling price must be greater than zero.");
+  }
+
+  try {
+
+    // Verify if the dealer exists
+    const dealer = await Dealer.findOne({ username });
+    if (!dealer) {
+      return res.status(404).send("Dealer not found.");
     }
-    if (quantity <= 0 || sellPrice <= 0) {
-        return res.status(400).send("Quantity and selling price must be greater than zero.");
+
+    // Find the item in inventory
+    const item = await Inventory.findOne({ name, color, model });
+
+    if (!item) {
+      return res.status(404).send("No such item found or item out of stock.");
     }
 
-    try {
-        // Verify if the dealer exists
-        const dealer = await Dealer.findOne({ username });
-        if (!dealer) {
-            return res.status(404).send("Dealer not found.");
-        }
-
-        // Find the item in inventory
-        const item = await Inventory.findOne({ name, color, model });
-
-        if (!item) {
-            return res.status(404).send("No such item found or item out of stock.");
-        }
-
-        if (item.quantity < quantity) {
-            return res.status(404).send("Not enough stock.");
-        }
-
-        // Update inventory and calculate profit
-        item.quantity -= quantity;
-        const totalCost = item.costPrice * quantity;
-        const totalSalePrice = sellPrice * quantity;
-        const profit = totalSalePrice - totalCost;
-
-        await item.save();
-
-        // Create a new sale record, associating it with the dealer
-        const sale = new Sales({
-            dealer: dealer._id, // Ensure this is set correctly
-            name,
-            model,
-            costPrice: item.costPrice,
-            sellPrice,
-            quantity,
-            color,
-            profit,
-        });
-
-        await sale.save();
-
-        // Return success message with the profit
-        return res.status(200).send(`Sale successful! Estimated profit: ${profit}`);
-
-    } catch (error) {
-        console.error("Error while processing the sale:", error);
-        return res.status(500).send("An error occurred while processing the sale.");
+    if (item.quantity < quantity) {
+      return res.status(404).send("Not enough stock.");
     }
+
+    // Update inventory and calculate profit
+    item.quantity -= quantity;
+    const totalCost = item.costPrice * quantity;
+    const totalSalePrice = sellPrice * quantity;
+    const profit = totalSalePrice - totalCost;
+
+    await item.save();
+    
+    // Increment logical clock for this event
+    incrementClock();
+
+    // Create a new sale record with the logical clock timestamp
+    const sale = new Sales({
+      dealer: dealer._id,
+      name,
+      model,
+      costPrice: item.costPrice,
+      sellPrice,
+      quantity,
+      color,
+      profit,
+      timestamp: clockState.logicalClock, // Use the updated clock value
+    });
+
+    await sale.save();
+
+    // Return success message
+    return res.status(200).send("Sale successful!");
+  } catch (error) {
+    console.error("Error while processing the sale:", error);
+    return res.status(500).send("An error occurred while processing the sale.");
+  }
 };
 
 const getSalesByUsername = async (req, res) => {

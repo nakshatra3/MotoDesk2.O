@@ -6,7 +6,9 @@ const {
     getInvByUsername,
     updateInv,
     removeInv,
-    getTotalInventoryCount
+    getTotalInventoryCount,
+    applyOffers,
+    finalizeSale
 } = require("../controllers/inventory.controller");
 const router = express.Router();
 
@@ -21,5 +23,9 @@ router.get("/getAll", getTotalInventoryCount);
 router.put("/update/:id/:username", updateInv);
 
 router.delete("/delete/:id/:username",removeInv);
+
+router.put("/inventory/apply-offers/:id", applyOffers);
+
+router.put("/inventory/finalize-sale/:id", finalizeSale);
 
 module.exports = router;

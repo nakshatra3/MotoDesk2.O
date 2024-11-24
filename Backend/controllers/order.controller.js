@@ -2,6 +2,7 @@ const Order = require("../config/order.config");
 const Price = require("../config/price.config");
 const Inventory = require("../config/Inventory.config");
 const Dealer = require("../config/dealer.config");
+const { acquireLock, releaseLock } = require("../config/serverOperations.config");
 
 const showOrderForm = async (req, res) => {
     res.render("order");
@@ -22,18 +23,27 @@ const displayOrder = async (req, res) => {
 
 const makeOrder = async (req, res) => {
     try {
+        // Attempt to acquire the lock
+        if (!acquireLock()) {
+            return res.status(429).send("Critical section busy. Try again later.");
+        }
+
+        console.log("Lock acquired for placing an order.");
+
         const { name, model, quantity, color } = req.body;
 
         // Validate required fields
         if (!name || !model || !quantity || !color) {
-            return res.status(400).send('All fields are required.');
+            releaseLock(); // Ensure the lock is released
+            return res.status(400).send("All fields are required.");
         }
 
-        // Find the price from the Price collection based on name, model, and color
+        // Find the price from the Price collection
         const priceEntry = await Price.findOne({ name, model, color });
 
         if (!priceEntry) {
-            return res.status(404).send('Price not found for the selected configuration.');
+            releaseLock(); // Ensure the lock is released
+            return res.status(404).send("Price not found for the selected configuration.");
         }
 
         // Compute total cost price
@@ -46,39 +56,51 @@ const makeOrder = async (req, res) => {
             costPrice,
             quantity,
             color,
-            // status and createdAt will use default values
         });
 
         // Save the order to the database
         await newOrder.save();
 
-        // Redirect to a confirmation page or orders list
-        res.send("Order Placed Sucessfully ") // Adjust the route as needed
+        console.log("Order placed successfully. Lock will be released after confirmation.");
+
+        // Respond without releasing the lock (to be released in the next step)
+        res.send("Order placed successfully. Awaiting confirmation.");
     } catch (err) {
-        console.error('Error creating order:', err);
-        res.status(500).send('Server Error');
+        console.error("Error creating order:", err);
+        releaseLock(); // Release the lock on error
+        res.status(500).send("Server Error");
     }
 };
 
 const updateOrderStatusToConfirmed = async (req, res) => {
     try {
-        const { orderId } = req.params; // Get order ID from request parameters
-
-        // Find the order by ID and update its status to 'confirmed'
-        const updatedOrder = await Order.findByIdAndUpdate(
-            orderId,
-            { status: 'confirmed' }, // Update the status to confirmed
-            { new: true } // Return the updated document
-        );
-
-        if (!updatedOrder) {
-            return res.status(404).send('Order not found.');
-        }
-
-        res.json({ message: 'Order status updated to confirmed successfully.', order: updatedOrder });
+      const { orderId } = req.params; // Get order ID from request parameters
+  
+      // Find the order by ID and update its status to 'confirmed'
+      const updatedOrder = await Order.findByIdAndUpdate(
+        orderId,
+        { status: "confirmed" }, // Update the status to confirmed
+        { new: true } // Return the updated document
+      );
+  
+      if (!updatedOrder) {
+        releaseLock(); // Ensure the lock is released
+        return res.status(404).send("Order not found.");
+      }
+  
+      console.log("Order confirmed. Lock released.");
+  
+      // Release the lock after confirming the order
+      releaseLock();
+  
+      res.json({
+        message: "Order status updated to confirmed successfully.",
+        order: updatedOrder,
+      });
     } catch (err) {
-        console.error('Error updating order status:', err);
-        res.status(500).send('Server Error');
+      console.error("Error updating order status:", err);
+      releaseLock(); // Release the lock on error
+      res.status(500).send("Server Error");
     }
 };
 
@@ -136,7 +158,7 @@ const updateOrderStatusToDelivered = async (req, res) => {
 
 const makeOrderByUsername = async (req, res) => {
     try {
-        const {username} = req.params;
+        const { username } = req.params;
         const { name, model, quantity, color } = req.body;
 
         // Validate required fields
@@ -185,4 +207,4 @@ const makeOrderByUsername = async (req, res) => {
 
 
 
-module.exports = { showOrderForm, displayOrder, makeOrder, updateOrderStatusToConfirmed, updateOrderStatusToDelivered,makeOrderByUsername };
+module.exports = { showOrderForm, displayOrder, makeOrder, updateOrderStatusToConfirmed, updateOrderStatusToDelivered, makeOrderByUsername };

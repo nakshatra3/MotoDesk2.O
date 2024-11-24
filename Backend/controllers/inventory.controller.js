@@ -137,5 +137,68 @@ const getTotalInventoryCount = async (req, res) => {
     }
 };
 
-// Export the new function along with existing ones
-module.exports = { getInvByID, addInv, getInvByUsername, updateInv, removeInv, getTotalInventoryCount };
+const applyOffers = async (req, res) => {
+    try {
+        const { id } = req.params; // Inventory ID from the route parameters
+        const { discountPercentage } = req.body; // Discount percentage from request body
+
+        // Step 1: Find the inventory item by ID
+        const inventory = await Inventory.findById(id);
+        if (!inventory) {
+            return res.status(404).json({ message: "Inventory item not found" });
+        }
+
+        // Step 2: Calculate the discounted price if a valid discount is provided
+        if (discountPercentage && discountPercentage > 0) {
+            const discountAmount = (inventory.price * discountPercentage) / 100;
+            inventory.price -= discountAmount; // Apply the discount
+        } else {
+            return res.status(400).json({ message: "Invalid discount percentage" });
+        }
+
+        // Step 3: Save the updated inventory item with the applied discount
+        await inventory.save();
+
+        res.status(200).json({ message: "Discount applied successfully", inventory });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+const finalizeSale = async (req, res) => {
+    try {
+        const { id } = req.params; // Inventory ID from the route parameters
+        const { buyerInfo } = req.body; // Buyer information from request body
+
+        // Step 1: Find the inventory item by ID
+        const inventory = await Inventory.findById(id);
+        if (!inventory) {
+            return res.status(404).json({ message: "Inventory item not found" });
+        }
+
+        // Step 2: Update the inventory status to sold and save buyer information
+        inventory.status = "sold";
+        inventory.buyer = buyerInfo;
+
+        // Step 3: Save the updated inventory item as sold
+        await inventory.save();
+
+        res.status(200).json({ message: "Sale finalized successfully", inventory });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// Export all functions, including applyOffers and finalizeSale
+module.exports = { 
+    getInvByID, 
+    addInv, 
+    getInvByUsername, 
+    updateInv, 
+    removeInv, 
+    getTotalInventoryCount, 
+    applyOffers, 
+    finalizeSale 
+};

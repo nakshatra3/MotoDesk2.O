@@ -13,11 +13,12 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const bodyParser = require('body-parser');
 const cors = require("cors");
-require('dotenv').config(); // Load environment variables
+const os = require("os");
+require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
-const secretKey = process.env.SECRET_KEY || 'nex1234'; // Default secret key if not in .env
+const PORT = process.env.PORT || 3000; 
+const secretKey = process.env.SECRET_KEY || 'nex1234';
 
 app.set("view engine", "ejs");
 
@@ -58,10 +59,14 @@ const verifyToken = (req, res, next) => {
 };
 
 
-// Landing Page
+//Landing Page
 app.get("/", (req, res) => {
   res.render("landingPage");
 });
+
+// app.get("/", (req, res) => {
+//   res.send(`Hello from server instance running on port ${PORT}, hostname: ${os.hostname()}`);
+// });
 
 // Login Page
 app.get("/login", (req, res) => {
